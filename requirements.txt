@@ -2,7 +2,6 @@ pyaudio
 keyboard
 groq
 python-dotenv
-aioreactive
-expression
 numpy
 playsound3
+pydub

@@ -5,6 +5,9 @@ import keyboard
 import time
 from groq import Groq
 from dotenv import load_dotenv
+import re
+from pydub import AudioSegment
+from playsound3 import playsound
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -173,14 +176,80 @@ def get_llm_response(text, api_key=None, stream=False):
         
         return response_text
 
-def text_to_speech(text, api_key=None, output_filename="speech.wav"):
+def split_text_into_chunks(text, max_chars=800):
     """
-    Converts text to speech using Groq's TTS API and saves the result as an audio file.
+    Splits text into smaller chunks respecting paragraph and sentence boundaries.
+    
+    Args:
+        text: The text to split
+        max_chars: Maximum characters per chunk (approximation for token limit)
+        
+    Returns:
+        List of text chunks
+    """
+    # Split text into paragraphs
+    paragraphs = text.split('\n\n')
+    chunks = []
+    current_chunk = ""
+    
+    for paragraph in paragraphs:
+        # If paragraph is too long, split by sentences
+        if len(paragraph) > max_chars:
+            # Add any existing chunk
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            
+            # Split into sentences
+            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+            
+            # Process each sentence
+            for sentence in sentences:
+                if len(sentence) > max_chars:
+                    # Handle very long sentences by breaking at reasonable points
+                    sentence_parts = []
+                    for i in range(0, len(sentence), max_chars - 100):
+                        part = sentence[i:i + max_chars - 100].strip()
+                        if part:
+                            sentence_parts.append(part)
+                    
+                    for part in sentence_parts:
+                        chunks.append(part)
+                else:
+                    if len(current_chunk) + len(sentence) + 1 > max_chars:
+                        chunks.append(current_chunk.strip())
+                        current_chunk = sentence
+                    else:
+                        if current_chunk:
+                            current_chunk += " " + sentence
+                        else:
+                            current_chunk = sentence
+        else:
+            # If adding this paragraph would exceed the limit, start a new chunk
+            if len(current_chunk) + len(paragraph) + 2 > max_chars:
+                chunks.append(current_chunk.strip())
+                current_chunk = paragraph
+            else:
+                # Add paragraph to current chunk
+                if current_chunk:
+                    current_chunk += "\n\n" + paragraph
+                else:
+                    current_chunk = paragraph
+    
+    # Add the final chunk if not empty
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
+def text_to_speech_chunked(text, api_key=None, output_filename="speech.wav"):
+    """
+    Converts text to speech using Groq's TTS API by splitting into chunks.
     
     Args:
         text: The text to convert to speech
         api_key: Groq API key (will use environment variable if None)
-        output_filename: Path to save the output audio file
+        output_filename: Path to save the final output audio file
         
     Returns:
         Path to the saved audio file
@@ -188,7 +257,7 @@ def text_to_speech(text, api_key=None, output_filename="speech.wav"):
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("GROQ_API_KEY")
     
-    # Get model from environment variable or use default
+    # Get model from environment variable
     model = os.getenv("GROQ_TTS", "playai-tts")
     
     if not api_key:
@@ -197,41 +266,86 @@ def text_to_speech(text, api_key=None, output_filename="speech.wav"):
     # Initialize Groq client
     client = Groq(api_key=api_key)
     
+    print("\n=== Converting LLM response to speech ===")
     print(f"Sending text to Groq TTS ({model})...")
     
-    # Default voice
-    voice = "Arista-PlayAI"
+    # Split text into smaller chunks
+    chunks = split_text_into_chunks(text)
+    print(f"Text split into {len(chunks)} chunks for TTS processing")
     
-    # Create the speech
-    response = client.audio.speech.create(
-        model=model,
-        voice=voice,
-        input=text,
-        response_format="wav"
-    )
+    # Create directory for temporary files
+    temp_dir = os.path.join(os.getcwd(), "temp_audio")
+    os.makedirs(temp_dir, exist_ok=True)
     
-    # Save the response to a file
-    response.write_to_file(output_filename)
+    # Process each chunk and save as temporary audio file
+    temp_files = []
     
-    print(f"TTS response saved to {output_filename}")
+    for i, chunk in enumerate(chunks):
+        print(f"Processing chunk {i+1}/{len(chunks)} ({len(chunk)} characters)")
+        temp_file = os.path.join(temp_dir, f"chunk_{i}.wav")
+        
+        try:
+            # Default voice
+            voice = "Arista-PlayAI"
+            
+            # Create the speech
+            response = client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=chunk,
+                response_format="wav"
+            )
+            
+            # Save the response to a file
+            response.write_to_file(temp_file)
+            temp_files.append(temp_file)
+            
+        except Exception as e:
+            print(f"Error processing chunk {i+1}: {e}")
     
-    return output_filename
+    # Combine all audio files into one using pydub
+    if temp_files:
+        print("Combining audio chunks...")
+        
+        # Create a combined audio file
+        combined = AudioSegment.empty()
+        for temp_file in temp_files:
+            segment = AudioSegment.from_file(temp_file)
+            combined += segment
+        
+        # Export the combined audio
+        combined.export(output_filename, format="wav")
+        
+        print(f"Combined TTS response saved to {output_filename}")
+        
+        # Clean up temporary files
+        for temp_file in temp_files:
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+        
+        try:
+            os.rmdir(temp_dir)
+        except:
+            pass
+        
+        return output_filename
+    else:
+        print("No audio chunks were created successfully.")
+        return None
 
 def play_audio(audio_file_path):
     """
-    Plays an audio file.
+    Plays an audio file using playsound3.
     
     Args:
         audio_file_path: Path to the audio file to play
     """
     try:
-        from playsound import playsound
         print(f"Playing audio from {audio_file_path}...")
         playsound(audio_file_path)
         print("Audio playback completed.")
-    except ImportError:
-        print("Error: playsound library not found.")
-        print("Please install it with: pip install playsound")
     except Exception as e:
         print(f"Error playing audio: {e}")
 
@@ -278,13 +392,12 @@ def main():
                 # Send the transcription to the LLM
                 llm_response = get_llm_response(transcription, api_key, stream)
                 
-                # Convert the LLM response to speech
-                print("\n=== Converting LLM response to speech ===")
-                speech_file = text_to_speech(llm_response, api_key, speech_filename)
-                print("======================================\n")
+                # Convert the LLM response to speech using chunking
+                speech_file = text_to_speech_chunked(llm_response, api_key, speech_filename)
                 
-                # Play the synthesized speech
-                play_audio(speech_file)
+                # Play the synthesized speech if successful
+                if speech_file:
+                    play_audio(speech_file)
             else:
                 print("Transcription cancelled by user.")
     
