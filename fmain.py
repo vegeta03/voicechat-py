@@ -100,6 +100,7 @@ class AudioRecorder:
 class GroqClient:
     def __init__(self):
         self.api_key = os.environ.get("GROQ_API_KEY")
+        self.stt_model = os.environ.get("GROQ_STT")
         if not self.api_key:
             raise ValueError(
                 "GROQ_API_KEY not found in environment variables. "
@@ -114,7 +115,7 @@ class GroqClient:
         with open(audio_file, "rb") as file_obj: # Renamed to file_obj to avoid conflict
             transcription_response = self.client.audio.transcriptions.create( # Renamed variable
                 file=(os.path.basename(audio_file), file_obj), 
-                model="whisper-large-v3-turbo",
+                model=self.stt_model,
                 response_format="json",
                 language="en"
             )
