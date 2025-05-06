@@ -14,6 +14,7 @@ print(f"GROQ_API_KEY loaded: {'✓' if os.getenv('GROQ_API_KEY') else '✗'}")
 def record_audio(output_filename, key_to_hold="space"):
     """
     Records audio while the specified key is held down.
+    
     Args:
         output_filename: Path to save the recorded audio
         key_to_hold: Key that must be held to record (default: space)
@@ -46,7 +47,6 @@ def record_audio(output_filename, key_to_hold="space"):
     
     # Record while key is held
     frames = []
-    
     try:
         while keyboard.is_pressed(key_to_hold):
             data = stream.read(CHUNK, exception_on_overflow=False)
@@ -74,9 +74,11 @@ def record_audio(output_filename, key_to_hold="space"):
 def transcribe_with_groq(audio_file_path, api_key=None):
     """
     Transcribes audio using Groq's Whisper API.
+    
     Args:
         audio_file_path: Path to the audio file
         api_key: Groq API key (will use environment variable if None)
+        
     Returns:
         Transcription text
     """
@@ -113,7 +115,7 @@ def get_llm_response(text, api_key=None, stream=False):
         text: The text to send to the LLM
         api_key: Groq API key (will use environment variable if None)
         stream: Whether to stream the response or not
-    
+        
     Returns:
         LLM response text
     """
@@ -149,6 +151,7 @@ def get_llm_response(text, api_key=None, stream=False):
                 content = chunk.choices[0].delta.content
                 print(content, end="", flush=True)
                 full_response += content
+        
         print("\n===============================\n")
         return full_response
     else:
@@ -170,21 +173,85 @@ def get_llm_response(text, api_key=None, stream=False):
         
         return response_text
 
+def text_to_speech(text, api_key=None, output_filename="speech.wav"):
+    """
+    Converts text to speech using Groq's TTS API and saves the result as an audio file.
+    
+    Args:
+        text: The text to convert to speech
+        api_key: Groq API key (will use environment variable if None)
+        output_filename: Path to save the output audio file
+        
+    Returns:
+        Path to the saved audio file
+    """
+    # Use provided API key or get from environment
+    api_key = api_key or os.getenv("GROQ_API_KEY")
+    
+    # Get model from environment variable or use default
+    model = os.getenv("GROQ_TTS", "playai-tts")
+    
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not provided or set in environment")
+    
+    # Initialize Groq client
+    client = Groq(api_key=api_key)
+    
+    print(f"Sending text to Groq TTS ({model})...")
+    
+    # Default voice
+    voice = "Arista-PlayAI"
+    
+    # Create the speech
+    response = client.audio.speech.create(
+        model=model,
+        voice=voice,
+        input=text,
+        response_format="wav"
+    )
+    
+    # Save the response to a file
+    response.write_to_file(output_filename)
+    
+    print(f"TTS response saved to {output_filename}")
+    
+    return output_filename
+
+def play_audio(audio_file_path):
+    """
+    Plays an audio file.
+    
+    Args:
+        audio_file_path: Path to the audio file to play
+    """
+    try:
+        from playsound import playsound
+        print(f"Playing audio from {audio_file_path}...")
+        playsound(audio_file_path)
+        print("Audio playback completed.")
+    except ImportError:
+        print("Error: playsound library not found.")
+        print("Please install it with: pip install playsound")
+    except Exception as e:
+        print(f"Error playing audio: {e}")
+
 def main():
-    """Main function to test audio recording, transcription, and LLM response."""
+    """Main function to test audio recording, transcription, LLM response, and TTS."""
     # Get API key from environment
     api_key = os.getenv("GROQ_API_KEY")
+    
     if not api_key:
         print("Warning: GROQ_API_KEY environment variable not set.")
         api_key = input("Please enter your Groq API key: ")
     
     # Save the recorded audio file in the current directory
     output_filename = os.path.join(os.getcwd(), "recorded_audio.wav")
+    speech_filename = os.path.join(os.getcwd(), "llm_response.wav")
     
     try:
         # Record audio
-        print("=== Real-time Audio Transcription and LLM Response with Groq API ===")
-        print("This script will record audio, transcribe it, and get an LLM response.")
+        print("=== Real-time Audio Transcription, LLM Response, and Speech Synthesis with Groq API ===")
+        print("This script will record audio, transcribe it, get an LLM response, and convert the response to speech.")
         
         # Ask if the user wants to stream the LLM response
         stream_choice = input("Do you want to stream the LLM response? (y/n): ").lower().strip()
@@ -209,9 +276,18 @@ def main():
                 print("============================\n")
                 
                 # Send the transcription to the LLM
-                get_llm_response(transcription, api_key, stream)
+                llm_response = get_llm_response(transcription, api_key, stream)
+                
+                # Convert the LLM response to speech
+                print("\n=== Converting LLM response to speech ===")
+                speech_file = text_to_speech(llm_response, api_key, speech_filename)
+                print("======================================\n")
+                
+                # Play the synthesized speech
+                play_audio(speech_file)
             else:
                 print("Transcription cancelled by user.")
+    
     except Exception as e:
         print(f"Error occurred: {e}")
 
