@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv(override=True)
+
 print(f"GROQ_API_KEY loaded: {'✓' if os.getenv('GROQ_API_KEY') else '✗'}")
 
 def record_audio(output_filename, key_to_hold="space"):
@@ -22,10 +23,10 @@ def record_audio(output_filename, key_to_hold="space"):
     CHANNELS = 1
     RATE = 16000  # 16kHz is optimal for speech recognition
     CHUNK = 1024
-
+    
     # Initialize PyAudio
     audio = pyaudio.PyAudio()
-
+    
     # Prepare the stream
     stream = audio.open(
         format=FORMAT,
@@ -34,16 +35,18 @@ def record_audio(output_filename, key_to_hold="space"):
         input=True,
         frames_per_buffer=CHUNK
     )
-
+    
     print(f"Hold the {key_to_hold.upper()} key to start recording...")
+    
     # Wait for key press
     while not keyboard.is_pressed(key_to_hold):
         time.sleep(0.1)
     
     print("Recording started! Keep holding the key...")
-
+    
     # Record while key is held
     frames = []
+    
     try:
         while keyboard.is_pressed(key_to_hold):
             data = stream.read(CHUNK, exception_on_overflow=False)
@@ -54,7 +57,7 @@ def record_audio(output_filename, key_to_hold="space"):
         stream.close()
         audio.terminate()
         print("Recording stopped.")
-
+    
     # Save the recorded audio to WAV file
     if frames:
         with wave.open(output_filename, 'wb') as wf:
@@ -79,18 +82,18 @@ def transcribe_with_groq(audio_file_path, api_key=None):
     """
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("GROQ_API_KEY")
-
+    
     # Get model from environment variable
     model = os.getenv("GROQ_STT", "whisper-large-v3-turbo")
-
+    
     if not api_key:
         raise ValueError("GROQ_API_KEY not provided or set in environment")
-
+    
     # Initialize Groq client
     client = Groq(api_key=api_key)
-
+    
     print("Sending audio to Groq API for transcription...")
-
+    
     # Open the audio file and transcribe
     with open(audio_file_path, "rb") as file:
         transcription = client.audio.transcriptions.create(
@@ -99,25 +102,93 @@ def transcribe_with_groq(audio_file_path, api_key=None):
             response_format="json",
             language="en"
         )
-
+    
     return transcription.text
 
+def get_llm_response(text, api_key=None, stream=False):
+    """
+    Sends text to Groq's LLM and gets the response.
+    
+    Args:
+        text: The text to send to the LLM
+        api_key: Groq API key (will use environment variable if None)
+        stream: Whether to stream the response or not
+    
+    Returns:
+        LLM response text
+    """
+    # Use provided API key or get from environment
+    api_key = api_key or os.getenv("GROQ_API_KEY")
+    
+    # Get model from environment variable or use default
+    model = os.getenv("GROQ_LLM", "llama-3.1-8b-instant")
+    
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not provided or set in environment")
+    
+    # Initialize Groq client
+    client = Groq(api_key=api_key)
+    
+    print(f"Sending text to Groq LLM ({model})...")
+    
+    # Create the chat completion
+    if stream:
+        # Stream the response
+        print("\n=== LLM Response (Streaming) ===")
+        full_response = ""
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": text}
+            ],
+            stream=True
+        )
+        
+        for chunk in response:
+            if chunk.choices and hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
+                content = chunk.choices[0].delta.content
+                print(content, end="", flush=True)
+                full_response += content
+        print("\n===============================\n")
+        return full_response
+    else:
+        # Get complete response
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": text}
+            ]
+        )
+        
+        # Extract and return the response text
+        response_text = response.choices[0].message.content
+        
+        # Print the response
+        print("\n=== LLM Response ===")
+        print(response_text)
+        print("===================\n")
+        
+        return response_text
+
 def main():
-    """Main function to test audio recording and transcription."""
+    """Main function to test audio recording, transcription, and LLM response."""
     # Get API key from environment
     api_key = os.getenv("GROQ_API_KEY")
-
     if not api_key:
         print("Warning: GROQ_API_KEY environment variable not set.")
         api_key = input("Please enter your Groq API key: ")
-
+    
     # Save the recorded audio file in the current directory
     output_filename = os.path.join(os.getcwd(), "recorded_audio.wav")
-
+    
     try:
         # Record audio
-        print("=== Real-time Audio Transcription with Groq API ===")
-        print("This script will record audio and transcribe it using Groq's Whisper API.")
+        print("=== Real-time Audio Transcription and LLM Response with Groq API ===")
+        print("This script will record audio, transcribe it, and get an LLM response.")
+        
+        # Ask if the user wants to stream the LLM response
+        stream_choice = input("Do you want to stream the LLM response? (y/n): ").lower().strip()
+        stream = stream_choice == 'y' or stream_choice == 'yes'
         
         # Record audio when space bar is held down
         success = record_audio(output_filename)
@@ -127,16 +198,20 @@ def main():
             print("Do you want to send the recorded audio file to Groq for transcription?")
             print("Press Enter to confirm or any other key to cancel:")
             key = input()
+            
             if not key.strip():  # More robust check for Enter key (empty input)
                 # Transcribe the recorded audio
                 transcription = transcribe_with_groq(output_filename, api_key)
+                
                 # Display the transcription
                 print("\n=== Transcription Result ===")
                 print(transcription)
                 print("============================\n")
+                
+                # Send the transcription to the LLM
+                get_llm_response(transcription, api_key, stream)
             else:
                 print("Transcription cancelled by user.")
-                
     except Exception as e:
         print(f"Error occurred: {e}")
 
