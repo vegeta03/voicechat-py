@@ -26,7 +26,6 @@ wheels/
 venv/
 env/
 ENV/
-.env
 
 # IDE specific files
 .idea/
@@ -41,17 +40,47 @@ recorded_audio.wav
 *.mp3
 *.ogg
 *.flac
+temp_audio/
 
 # Logs
 *.log
 logs/
 
-# Local configuration
+# Secrets and configuration files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.sample
+!.env.example
+!.env.template
+*.env
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+config.json
+*config.json
+*secrets*
+*credentials*
+*_key*
+*_token*
+*_secret*
+*password*
+*apikey*
+*api_key*
+
+# Security certificates
+*.crt
+*.cer
+*.ca-bundle
+*.p7b
+*.p7c
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
