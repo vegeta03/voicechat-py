@@ -1,0 +1,13 @@
+# Audio recording
+pyaudio
+keyboard
+
+# Groq API client
+groq
+
+# Environment variable loading
+python-dotenv
+
+# Reactive and functional programming libraries
+aioreactive
+expression
