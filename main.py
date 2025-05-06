@@ -157,15 +157,24 @@ def get_llm_response(text, api_key=None):
 
 def split_text_into_chunks(text, max_chars=800):
     """
-    Splits text into smaller chunks respecting paragraph and sentence boundaries.
+    Splits text into smaller chunks respecting word boundaries.
     
     Args:
         text: The text to split
-        max_chars: Maximum characters per chunk (approximation for token limit)
+        max_chars: Maximum characters per chunk 
         
     Returns:
         List of text chunks
     """
+    # Get the max_chars from environment if available
+    env_max_chars = os.getenv("MAX_CHARS_PER_CHUNK")
+    if env_max_chars:
+        try:
+            max_chars = int(env_max_chars)
+            print(f"Using MAX_CHARS_PER_CHUNK={max_chars} from environment")
+        except ValueError:
+            print(f"Invalid MAX_CHARS_PER_CHUNK value: {env_max_chars}, using default {max_chars}")
+    
     # Split text into paragraphs
     paragraphs = text.split('\n\n')
     chunks = []
@@ -185,15 +194,23 @@ def split_text_into_chunks(text, max_chars=800):
             # Process each sentence
             for sentence in sentences:
                 if len(sentence) > max_chars:
-                    # Handle very long sentences by breaking at reasonable points
-                    sentence_parts = []
-                    for i in range(0, len(sentence), max_chars - 100):
-                        part = sentence[i:i + max_chars - 100].strip()
-                        if part:
-                            sentence_parts.append(part)
+                    # Handle very long sentences by breaking at word boundaries
+                    words = sentence.split()
+                    current_sentence = ""
                     
-                    for part in sentence_parts:
-                        chunks.append(part)
+                    for word in words:
+                        if len(current_sentence) + len(word) + 1 > max_chars:
+                            if current_sentence:  # Avoid empty chunks
+                                chunks.append(current_sentence.strip())
+                            current_sentence = word
+                        else:
+                            if current_sentence:
+                                current_sentence += " " + word
+                            else:
+                                current_sentence = word
+                    
+                    if current_sentence:  # Add any remaining text
+                        chunks.append(current_sentence.strip())
                 else:
                     if len(current_chunk) + len(sentence) + 1 > max_chars:
                         chunks.append(current_chunk.strip())
@@ -248,7 +265,7 @@ def text_to_speech_chunked(text, api_key=None, output_filename="speech.wav"):
     print("\n=== Converting LLM response to speech ===")
     print(f"Sending text to Groq TTS ({model})...")
     
-    # Split text into smaller chunks
+    # Split text into smaller chunks using environment variable for max_chars
     chunks = split_text_into_chunks(text)
     print(f"Text split into {len(chunks)} chunks for TTS processing")
     
