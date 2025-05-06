@@ -143,7 +143,6 @@ async def wait_for_key_press(key_name: str):
 
 async def get_confirmation():
     print(f"Do you want to send the recorded audio file to Groq for transcription?")
-    # MODIFIED: Prompt wording changed
     print("Press Enter to confirm or any other key to cancel:") 
     try:
         response = await run_in_thread(input)
