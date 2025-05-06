@@ -110,14 +110,13 @@ def transcribe_with_groq(audio_file_path, api_key=None):
     
     return transcription.text
 
-def get_llm_response(text, api_key=None, stream=False):
+def get_llm_response(text, api_key=None):
     """
     Sends text to Groq's LLM and gets the response.
     
     Args:
         text: The text to send to the LLM
         api_key: Groq API key (will use environment variable if None)
-        stream: Whether to stream the response or not
         
     Returns:
         LLM response text
@@ -136,45 +135,25 @@ def get_llm_response(text, api_key=None, stream=False):
     
     print(f"Sending text to Groq LLM ({model})...")
     
-    # Create the chat completion
-    if stream:
-        # Stream the response
-        print("\n=== LLM Response (Streaming) ===")
-        full_response = ""
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "user", "content": text}
-            ],
-            stream=True
-        )
-        
-        for chunk in response:
-            if chunk.choices and hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
-                content = chunk.choices[0].delta.content
-                print(content, end="", flush=True)
-                full_response += content
-        
-        print("\n===============================\n")
-        return full_response
-    else:
-        # Get complete response
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "user", "content": text}
-            ]
-        )
-        
-        # Extract and return the response text
-        response_text = response.choices[0].message.content
-        
-        # Print the response
-        print("\n=== LLM Response ===")
-        print(response_text)
-        print("===================\n")
-        
-        return response_text
+    # Stream the response (always streaming now)
+    print("\n=== LLM Response (Streaming) ===")
+    full_response = ""
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "user", "content": text}
+        ],
+        stream=True
+    )
+    
+    for chunk in response:
+        if chunk.choices and hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
+            content = chunk.choices[0].delta.content
+            print(content, end="", flush=True)
+            full_response += content
+    
+    print("\n===============================\n")
+    return full_response
 
 def split_text_into_chunks(text, max_chars=800):
     """
@@ -367,39 +346,39 @@ def main():
         print("=== Real-time Audio Transcription, LLM Response, and Speech Synthesis with Groq API ===")
         print("This script will record audio, transcribe it, get an LLM response, and convert the response to speech.")
         
-        # Ask if the user wants to stream the LLM response
-        stream_choice = input("Do you want to stream the LLM response? (y/n): ").lower().strip()
-        stream = stream_choice == 'y' or stream_choice == 'yes'
-        
         # Record audio when space bar is held down
         success = record_audio(output_filename)
         
         if success:
-            # Confirmation prompt
-            print("Do you want to send the recorded audio file to Groq for transcription?")
-            print("Press Enter to confirm or any other key to cancel:")
-            key = input()
+            # Start the timer before STT call
+            start_time = time.perf_counter()
             
-            if not key.strip():  # More robust check for Enter key (empty input)
-                # Transcribe the recorded audio
-                transcription = transcribe_with_groq(output_filename, api_key)
-                
-                # Display the transcription
-                print("\n=== Transcription Result ===")
-                print(transcription)
-                print("============================\n")
-                
-                # Send the transcription to the LLM
-                llm_response = get_llm_response(transcription, api_key, stream)
-                
-                # Convert the LLM response to speech using chunking
-                speech_file = text_to_speech_chunked(llm_response, api_key, speech_filename)
-                
-                # Play the synthesized speech if successful
-                if speech_file:
-                    play_audio(speech_file)
-            else:
-                print("Transcription cancelled by user.")
+            # Transcribe the recorded audio (no confirmation needed)
+            transcription = transcribe_with_groq(output_filename, api_key)
+            
+            # Display the transcription
+            print("\n=== Transcription Result ===")
+            print(transcription)
+            print("============================\n")
+            
+            # Send the transcription to the LLM (always streaming)
+            llm_response = get_llm_response(transcription, api_key)
+            
+            # Convert the LLM response to speech using chunking
+            speech_file = text_to_speech_chunked(llm_response, api_key, speech_filename)
+            
+            # Stop the timer after TTS processing
+            end_time = time.perf_counter()
+            elapsed_time = end_time - start_time
+            
+            # Print the total time
+            print(f"\n=== Total Processing Time ===")
+            print(f"Time from STT to TTS completion: {elapsed_time:.4f} seconds")
+            print("==============================\n")
+            
+            # Play the synthesized speech if successful
+            if speech_file:
+                play_audio(speech_file)
     
     except Exception as e:
         print(f"Error occurred: {e}")
