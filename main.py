@@ -241,6 +241,7 @@ def get_llm_response(text: str, api_key: Optional[str] = None, stream_mode: bool
         response = client.chat.completions.create(
             model=model,
             messages=[
+                {"role": "system", "content": "Respond with plain text only. Do not use markdown, formatting symbols, asterisks, backticks, hashtags, or any special syntax. Avoid formatting instructions and explanations. Your response will be sent directly to a text-to-speech system, so provide clean, natural language without any formatting characters."},
                 {"role": "user", "content": text}
             ],
             stream=True
@@ -567,7 +568,7 @@ def main() -> int:
     
     # Define file paths
     output_filename = os.path.join(os.getcwd(), "recorded_audio.wav")
-    speech_filename = os.path.join(os.getcwd(), "llm_response.wav")
+    speech_filename = os.path.join(os.getcwd(), "tts_response.wav")
     
     try:
         # Print introduction
