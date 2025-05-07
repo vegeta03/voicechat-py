@@ -35,11 +35,9 @@ DEFAULT_CANCEL_KEY = "esc"
 
 def display_audio_level(level: float, width: int = 40) -> None:
     """Display audio level as a visual indicator."""
-    # Scale to 0-1 range, applying some non-linear scaling for better visualization
     scaled_level = min(1.0, level * 5) # Amplify for better visibility
     bar_length = int(scaled_level * width)
 
-    # Create the bar with different colors for different levels
     if scaled_level < 0.3:
         bar = '\033[92m' + '█' * bar_length + '\033[0m' # Green
     elif scaled_level < 0.7:
@@ -47,10 +45,8 @@ def display_audio_level(level: float, width: int = 40) -> None:
     else:
         bar = '\033[91m' + '█' * bar_length + '\033[0m' # Red
 
-    # Fill the rest with empty space
     empty_space = ' ' * (width - bar_length)
 
-    # Display the level bar, overwriting the previous line
     sys.stdout.write(f"\rLevel: [{bar}{empty_space}] {level:.2f}")
     sys.stdout.flush()
 
@@ -187,9 +183,6 @@ def transcribe_with_groq(audio_file_path: str, api_key: Optional[str] = None) ->
         api_key: Groq API key (will use environment variable if None)
     Returns:
         Transcription text
-    Raises:
-        ValueError: If API key is not provided
-        Exception: If transcription fails
     """
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("GROQ_API_KEY")
@@ -228,9 +221,6 @@ def get_llm_response(text: str, api_key: Optional[str] = None, stream_mode: bool
         stream_mode: If True, returns a generator that yields chunks of text
     Returns:
         LLM response text or a generator that yields chunks of text if stream_mode is True
-    Raises:
-        ValueError: If API key is not provided
-        Exception: If LLM request fails
     """
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("GROQ_API_KEY")
@@ -376,8 +366,6 @@ def text_to_speech_chunked(text: str, api_key: Optional[str] = None,
         output_filename: Path to save the final output audio file
     Returns:
         Path to the saved audio file or None if unsuccessful
-    Raises:
-        ValueError: If API key is not provided
     """
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("GROQ_API_KEY")
@@ -392,7 +380,7 @@ def text_to_speech_chunked(text: str, api_key: Optional[str] = None,
     client = Groq(api_key=api_key)
 
     print("\n=== Converting LLM response to speech ===")
-    print(f"Sending text to Groq TTS ({model})...")
+    print(f"Using Groq TTS provider with voice 'Arista-PlayAI' and model {model}")
 
     # Split text into smaller chunks using environment variable for max_chars
     chunks = split_text_into_chunks(text)
@@ -421,6 +409,7 @@ def text_to_speech_chunked(text: str, api_key: Optional[str] = None,
                     response_format="wav"
                 )
                 
+                print("Waiting for TTS response from Groq provider...")
                 # Save the response to a file
                 response.write_to_file(temp_file)
                 temp_files.append(temp_file)
@@ -473,9 +462,6 @@ def text_to_speech_smallestai(llm_response_generator, api_key: Optional[str] = N
         
     Returns:
         Path to the saved audio file or None if unsuccessful
-        
-    Raises:
-        ValueError: If API key is not provided
     """
     # Use provided API key or get from environment
     api_key = api_key or os.getenv("SMALLESTAI_API_KEY")
@@ -495,8 +481,9 @@ def text_to_speech_smallestai(llm_response_generator, api_key: Optional[str] = N
             print("pip install smallestai")
             return None
             
-        print("\n=== Converting LLM response to speech with SmallestAI (Streaming) ===")
-        print(f"Using model: {model}, voice: {voice_id}")
+        print(f"\n=== Converting LLM response to speech with SmallestAI (Streaming) ===")
+        print(f"Using SmallestAI TTS provider with voice '{voice_id}' and model {model}")
+        print("Waiting for TTS response from SmallestAI provider...")
         
         # Define the async function to handle streaming
         async def stream_and_save():
